@@ -1,0 +1,8 @@
+node_modules/
+*.json.gz
+/data/raw/
+/data/wheat-subset/
+/data/synthetic-subset/
+/data/rdf/
+*.log
+.DS_Store

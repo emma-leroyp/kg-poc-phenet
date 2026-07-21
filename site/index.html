@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PHENET Knowledge Graph: Wheat Proof of Concept</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img src="assets/phenet-logo.png" alt="PHENET logo" class="logo">
+    <div class="brand-text">
+      <h1>Knowledge graph proof of concept</h1>
+      <p class="subtitle">
+        This is a test, not the real PHENET knowledge graph. It mixes real wheat data from
+        INRAE-URGI's FAIDARE database with a synthetic layer that fills in what the real trial
+        never measured, like yield. Read more:
+        <a href="docs/data-assessment.md">what's in the real data</a>,
+        <a href="docs/schema-design.md">how the graph is built</a>, and
+        <a href="docs/synthetic-data.md">how the synthetic data was made</a>.
+      </p>
+    </div>
+  </div>
+</header>
+
+<div id="status" class="status">Loading knowledge graph...</div>
+
+<main id="app" hidden>
+
+  <div class="toolbar">
+    <label class="toggle">
+      <input type="checkbox" id="includeSynthetic" checked>
+      Include synthetic demo data
+    </label>
+    <span class="legend">
+      <span class="badge badge-real">real</span> FAIDARE / INRAE-URGI data
+      &nbsp;
+      <span class="badge badge-synthetic">synthetic</span> made up for this demo, not a real measurement
+    </span>
+  </div>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="cq1">Best-performing genotype</button>
+    <button class="tab-btn" data-tab="cq2">Best environment for yield</button>
+    <button class="tab-btn" data-tab="cq3">Descriptor consistency check</button>
+    <button class="tab-btn" data-tab="cq4">Genotype directory &amp; usage</button>
+  </nav>
+
+  <section id="cq1" class="tab-panel active">
+    <h2>Which genotype performed best?</h2>
+    <p class="explain">
+      Pick a trait and see every genotype ranked by its average value, across every trial, plot,
+      and season. Most traits here are real, directly measured wheat quality values.
+    </p>
+    <p class="explain example">
+      <strong>Example:</strong> pick <em>Thousand Kernel Weight</em> to see which wheat lines
+      produced the heaviest grains on average, a real result straight from the FAIDARE data.
+    </p>
+    <div class="controls">
+      <label>Trait: <select id="cq1-trait"></select></label>
+      <button id="cq1-run">Run</button>
+    </div>
+    <div class="controls filters">
+      <span class="filters-label">Optional filters:</span>
+      <label>Min value <input type="number" id="cq1-min-value" step="any" placeholder="any"></label>
+      <label>Max value <input type="number" id="cq1-max-value" step="any" placeholder="any"></label>
+      <label>Min observations <input type="number" id="cq1-min-obs" min="0" placeholder="any"></label>
+      <label>Max observations <input type="number" id="cq1-max-obs" min="0" placeholder="any"></label>
+      <label>Locations (leave empty for all)
+        <select id="cq1-locations" multiple size="4"></select>
+      </label>
+      <button type="button" id="cq1-clear-filters" class="secondary">Clear filters</button>
+    </div>
+    <div id="cq1-result" class="result"></div>
+  </section>
+
+  <section id="cq2" class="tab-panel">
+    <h2>Which environment gives the best yield?</h2>
+    <p class="explain">
+      Pick a few genotypes and see which trial location gave them the best average yield: a
+      genotype-by-environment comparison, one of the questions a breeding programme actually needs
+      answered.
+    </p>
+    <p class="explain example">
+      <strong>Example:</strong> pick two or three candidate lines and see which site would have
+      suited them best.
+    </p>
+    <p class="note">Yield is <span class="badge badge-synthetic">synthetic</span>. The real trial in this dataset measured grain quality (protein, hardness, dough tests), never yield. See <a href="docs/data-assessment.md">data assessment</a> for why. The locations and genotypes are real; only the yield numbers are made up to demonstrate the query.</p>
+    <div class="controls">
+      <label>Genotypes (pick one or more):
+        <select id="cq2-genotypes" multiple size="6"></select>
+      </label>
+      <button id="cq2-run">Run</button>
+    </div>
+    <div id="cq2-result" class="result"></div>
+  </section>
+
+  <section id="cq3" class="tab-panel">
+    <h2>Do the passport descriptors match the field data?</h2>
+    <p class="explain">
+      Every genebank accession has a passport descriptor, an official value recorded when the
+      variety was registered (say, "this line is awned"). This check compares that value against
+      what field trials actually measured, and flags disagreements.
+    </p>
+    <p class="explain example">
+      <strong>Example:</strong> genotype <em>APACHE</em>'s passport says its awn type is
+      "awnless". Field trials recorded its awn type 24 times. If 23 say "awnless" and 1 says
+      "awned", that's a 96% match, shown as "some inconsistency" rather than a clean match,
+      because that one reading could be a scoring mistake, or something real worth checking.
+    </p>
+    <div class="legend-box">
+      <strong>What "Verdict" means:</strong>
+      <ul>
+        <li><strong>Numeric traits</strong> (kernel weight, plant height):
+          <span class="match">match</span> means the field average falls within the accepted range
+          of the passport value; <span class="mismatch">mismatch</span> means it doesn't. The exact
+          range used is shown in the results.</li>
+        <li><strong>Categorical traits</strong> (awn type, grain colour): each genotype was measured
+          many times. <span class="match">fully consistent</span> means every measurement agreed
+          with the passport value; <span class="mismatch">some inconsistency</span> means at least
+          one didn't. The exact match rate is always shown next to it.</li>
+      </ul>
+    </div>
+    <div class="controls">
+      <label>Trait pair: <select id="cq3-pair"></select></label>
+      <button id="cq3-run">Run</button>
+    </div>
+    <div id="cq3-caveat" class="note"></div>
+    <div id="cq3-result" class="result"></div>
+  </section>
+
+  <section id="cq4" class="tab-panel">
+    <h2>What do we know about a genotype, and where was it used?</h2>
+    <p class="explain">
+      Pick a genotype to see its accession number, taxonomy, every trait measured for it, and
+      every trial location it was used at, real and synthetic tagged separately. It also shows a
+      real gap: release date and place of origin, which this dataset can't answer.
+    </p>
+    <p class="explain example">
+      <strong>Example:</strong> pick <em>RE05007</em> to see its accession number, its taxonomic
+      ID (a real link to the NCBI Taxonomy database), and where it was used.
+    </p>
+    <p class="note">Release date is <strong>never available</strong> here. That's not a bug: FAIDARE simply doesn't record it. Answering that for real would need an external source, like a national variety register or genebank passport database. See <a href="docs/schema-design.md">schema design</a> for detail.</p>
+    <div class="controls">
+      <label>Genotype: <select id="cq4-genotype"></select></label>
+      <button id="cq4-run">Show</button>
+    </div>
+    <div id="cq4-result" class="result"></div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Proof of concept for the <a href="https://www.phenet.eu/en/about-phenet">PHENET project</a>
+    (Horizon Europe grant 101094587). Not an official PHENET product.</p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

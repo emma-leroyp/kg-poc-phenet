@@ -1,0 +1,35 @@
+@prefix ppeo:     <http://purl.org/ppeo/PPEO.owl#> .
+@prefix phenet:   <https://w3id.org/phenet-poc/ontology#> .
+@prefix phenetid: <https://w3id.org/phenet-poc/id/> .
+@prefix prov:     <http://www.w3.org/ns/prov#> .
+@prefix geo:      <http://www.w3.org/2003/01/geo/wgs84_pos#> .
+@prefix skos:     <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcat:     <http://www.w3.org/ns/dcat#> .
+@prefix dct:      <http://purl.org/dc/terms/> .
+@prefix rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix obo:      <http://purl.obolibrary.org/obo/> .
+@prefix agrovoc:  <http://aims.fao.org/aos/agrovoc/> .
+
+
+phenetid:RealFaidareDataset a prov:Entity ;
+  rdfs:label "Real FAIDARE INRAE-URGI data" ;
+  dct:source <https://forge.inrae.fr/urgi/is/faidare/-/tree/master/data/test/json-bulk/INRAE-URGI> .
+
+phenetid:SyntheticDemoDataset a prov:Entity ;
+  rdfs:label "Synthetic PoC demo data (NOT real measurements)" ;
+  rdfs:comment "See docs/synthetic-data.md for full generation methodology." .
+
+phenet:hasProvenance a rdf:Property ; rdfs:label "has provenance" .
+phenet:ofGermplasm a rdf:Property ; rdfs:label "of germplasm" .
+phenet:ofObservationUnit a rdf:Property ; rdfs:label "of observation unit" .
+phenet:observedVariable a rdf:Property ; rdfs:label "observed variable" .
+phenet:value a rdf:Property ; rdfs:label "value" .
+phenet:correspondsToDescriptor a rdf:Property ; rdfs:label "corresponds to descriptor" ;
+  rdfs:comment "Links an observed variable to the GermplasmDescriptor code it should be checked against for consistency (CQ3)." .
+phenet:testedSubstance a rdf:Property ; rdfs:label "tested substance" .
+phenet:Trial a rdfs:Class ; rdfs:label "Trial" .
+phenet:Program a rdfs:Class ; rdfs:label "Program" .
+phenet:GermplasmDescriptor a rdfs:Class ; rdfs:label "Germplasm Descriptor" ;
+  rdfs:comment "Passport/DUS descriptor value, not a MIAPPE/PPEO concept, out of that checklist's scope." .
