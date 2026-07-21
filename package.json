@@ -4,6 +4,7 @@
   "description": "Proof-of-concept knowledge graph for the PHENET project (Horizon Europe grant 101094587)",
   "private": true,
   "scripts": {
+    "download-raw": "node scripts/download-raw.js",
     "filter": "node scripts/filter-wheat.js",
     "generate-synthetic": "node scripts/generate-synthetic.js",
     "convert-to-rdf": "node scripts/convert-to-rdf.js"

@@ -1,7 +1,7 @@
 // Filters the FAIDARE INRAE-URGI bulk JSON test fixture (data/raw/*.json.gz) down to
 // a wheat-only, referentially-consistent subset, written to data/wheat-subset/*.json.
 //
-// Source: https://forge.inrae.fr/urgi/is/faidare/-/tree/master/data/test/json-bulk/INRAE-URGI
+// Source: https://forge.inrae.fr/urgi/is/faidare, pinned commit, see scripts/download-raw.js
 // See docs/data-assessment.md for why wheat was chosen for this PoC.
 
 const fs = require('fs');

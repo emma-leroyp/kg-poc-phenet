@@ -1,6 +1,6 @@
 # Source data assessment
 
-Source: [FAIDARE INRAE-URGI bulk JSON test fixture](https://forge.inrae.fr/urgi/is/faidare/-/tree/master/data/test/json-bulk/INRAE-URGI), BrAPI-derived JSON-LD (`@id`/`@type`/`schema:*` present on every record).
+Source: [FAIDARE INRAE-URGI bulk JSON test fixture](https://forge.inrae.fr/urgi/is/faidare/-/tree/095b0054046fc3840ab9183321c7ed897009e15e/data/test/json-bulk/INRAE-URGI), BrAPI-derived JSON-LD (`@id`/`@type`/`schema:*` present on every record). Pinned to commit `095b0054`, not `master`, since the live branch can change. `npm run download-raw` fetches exactly this commit; see `scripts/download-raw.js`.
 
 ## Files present
 
