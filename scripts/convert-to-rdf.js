@@ -1,18 +1,12 @@
-// Converts data/wheat-subset/ (real FAIDARE data) and data/synthetic-subset/ (fabricated
-// demo layer) into Turtle RDF, per docs/schema-design.md.
-//
-// Output: data/rdf/ontology.ttl (shared vocabulary + provenance entities),
-//         data/rdf/real.ttl, data/rdf/synthetic.ttl, kept as separate files so the
-//         frontend can load each into its own named graph (real vs. synthetic
-//         separation layer 2 of 3; layer 1 is the IRI namespace below; layer 3 is the
-//         phenet:hasProvenance property on every real/synthetic-layer instance).
+// STEP 1 VARIANT — same input as the original script (data/wheat-subset/,
+// produced by `npm run filter`), but skips generate-synthetic entirely:
+// only data/rdf/ontology.ttl and data/rdf/real.ttl are written.
 
 const fs = require('fs');
 const path = require('path');
 const { mapRealAwnValue, mapRealGrainColourValue } = require('./lib/trait-mappings');
 
 const WHEAT_DIR = path.join(__dirname, '..', 'data', 'wheat-subset');
-const SYNTH_DIR = path.join(__dirname, '..', 'data', 'synthetic-subset');
 const OUT_DIR = path.join(__dirname, '..', 'data', 'rdf');
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
@@ -91,10 +85,6 @@ function writeOntologyFile() {
   rdfs:label "Real FAIDARE INRAE-URGI data" ;
   dct:source <https://forge.inrae.fr/urgi/is/faidare/-/tree/master/data/test/json-bulk/INRAE-URGI> .
 
-phenetid:SyntheticDemoDataset a prov:Entity ;
-  rdfs:label "Synthetic PoC demo data (NOT real measurements)" ;
-  rdfs:comment "See docs/synthetic-data.md for full generation methodology." .
-
 phenet:hasProvenance a rdf:Property ; rdfs:label "has provenance" .
 phenet:ofGermplasm a rdf:Property ; rdfs:label "of germplasm" .
 phenet:ofObservationUnit a rdf:Property ; rdfs:label "of observation unit" .
@@ -129,8 +119,6 @@ function variableTurtle(iri, id, name, description, unit) {
   lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, ' .');
   return lines.join('\n') + '\n\n';
 }
-
-// --- Real data ---------------------------------------------------------------
 
 function writeRealFile() {
   const out = fs.createWriteStream(path.join(OUT_DIR, 'real.ttl'));
@@ -265,77 +253,5 @@ function writeRealFile() {
   console.log('real.ttl written:', { germplasm: germplasm.length, descriptors: descCounter, observation: observation.length, observationUnit: observationUnit.length, study: study.length });
 }
 
-// --- Synthetic data ------------------------------------------------------------
-
-function writeSyntheticFile() {
-  const out = fs.createWriteStream(path.join(OUT_DIR, 'synthetic.ttl'));
-  out.write(PREFIXES);
-
-  const observation = load(SYNTH_DIR, 'observation.json');
-  const observationUnit = load(SYNTH_DIR, 'observationUnit.json');
-  const observationVariable = load(SYNTH_DIR, 'observationVariable.json');
-  const study = load(SYNTH_DIR, 'study.json');
-  const trial = load(SYNTH_DIR, 'trial.json');
-  const program = load(SYNTH_DIR, 'program.json');
-
-  for (const v of observationVariable) {
-    out.write(variableTurtle(synthIri(`variable/${v.observationVariableDbId.replace(/^PHENETPOC:/, '')}`), v.observationVariableDbId, v.name, v.trait && v.trait.description, v.unit));
-  }
-
-  for (const u of observationUnit) {
-    out.write(`${synthIri(u.observationUnitDbId)} a ppeo:observation_unit ;
-  phenet:ofGermplasm ${realIri(u.germplasmURI)} ;
-  phenet:partOfStudy ${synthIri(u.studyDbId)} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  for (const o of observation) {
-    const val = valueLiteral(o.value);
-    const variableIri = synthIri(`variable/${o.observationVariableDbId.replace(/^PHENETPOC:/, '')}`);
-    out.write(`${synthIri(o.observationDbId)} a ppeo:observation ;
-  phenet:ofGermplasm ${realIri(o.germplasmURI)} ;
-  phenet:ofObservationUnit ${synthIri(o.observationUnitDbId)} ;
-  phenet:observedVariable ${variableIri} ;
-  phenet:value ${val === null ? '""' : val} ;
-  phenet:season ${str(o.season && o.season.seasonName || '')} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  for (const s of study) {
-    out.write(`${synthIri(s.studyDbId)} a ppeo:study ;
-  rdfs:label ${str(s.studyName)} ;
-  phenet:partOfTrial ${synthIri(s.trialDbId)} ;
-  phenet:conductedAt ${realIri(s.locationURI)} ;
-  phenet:season ${str(s.seasons[0])} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  for (const t of trial) {
-    out.write(`${synthIri(t.trialDbId)} a phenet:Trial ;
-  rdfs:label ${str(t.trialName)} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  for (const p of program) {
-    out.write(`${synthIri(p.programDbId)} a phenet:Program ;
-  rdfs:label ${str(p.programName)} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  out.end();
-  console.log('synthetic.ttl written:', { observation: observation.length, observationUnit: observationUnit.length, study: study.length });
-}
-
 writeOntologyFile();
 writeRealFile();
-writeSyntheticFile();

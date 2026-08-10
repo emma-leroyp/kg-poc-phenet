@@ -17,10 +17,6 @@ phenetid:RealFaidareDataset a prov:Entity ;
   rdfs:label "Real FAIDARE INRAE-URGI data" ;
   dct:source <https://forge.inrae.fr/urgi/is/faidare/-/tree/master/data/test/json-bulk/INRAE-URGI> .
 
-phenetid:SyntheticDemoDataset a prov:Entity ;
-  rdfs:label "Synthetic PoC demo data (NOT real measurements)" ;
-  rdfs:comment "See docs/synthetic-data.md for full generation methodology." .
-
 phenet:hasProvenance a rdf:Property ; rdfs:label "has provenance" .
 phenet:ofGermplasm a rdf:Property ; rdfs:label "of germplasm" .
 phenet:ofObservationUnit a rdf:Property ; rdfs:label "of observation unit" .
