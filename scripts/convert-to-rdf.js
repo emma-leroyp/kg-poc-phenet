@@ -1,23 +1,52 @@
-// Converts data/wheat-subset/ (real FAIDARE data) and data/synthetic-subset/ (fabricated
-// demo layer) into Turtle RDF, per docs/schema-design.md.
+// MODIFIED VERSION — reads directly from data/raw/*.json.gz.
+// No longer requires `npm run filter` (data/wheat-subset/) nor
+// `npm run generate-synthetic` (data/synthetic-subset/).
 //
 // Output: data/rdf/ontology.ttl (shared vocabulary + provenance entities),
-//         data/rdf/real.ttl, data/rdf/synthetic.ttl, kept as separate files so the
-//         frontend can load each into its own named graph (real vs. synthetic
-//         separation layer 2 of 3; layer 1 is the IRI namespace below; layer 3 is the
-//         phenet:hasProvenance property on every real/synthetic-layer instance).
+//         data/rdf/real.ttl (only — no synthetic.ttl is produced anymore).
+//
+// NOTE ON SCOPE: this version processes ALL crops found in data/raw (Wheat,
+// Maize, Forest tree, and any others), not just wheat. The trait crosswalk
+// (TRAIT_MATCH below) is keyed by observationVariableDbId, so it naturally
+// only ever fires for wheat's CO_321:*/PHENETPOC:* variable ids and never
+// mismatches onto another crop's variables — no change needed there. The
+// NCBI taxon, however, WAS hardcoded to wheat for every germplasm record;
+// that's fixed below with a per-crop lookup (see CROP_TAXON).
 
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { mapRealAwnValue, mapRealGrainColourValue } = require('./lib/trait-mappings');
 
-const WHEAT_DIR = path.join(__dirname, '..', 'data', 'wheat-subset');
-const SYNTH_DIR = path.join(__dirname, '..', 'data', 'synthetic-subset');
+const RAW_DIR = path.join(__dirname, '..', 'data', 'raw');
 const OUT_DIR = path.join(__dirname, '..', 'data', 'rdf');
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
-function load(dir, name) {
-  return JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+// Set to a crop name (e.g. 'Wheat') to scope processing to a single crop,
+// reproducing the old filter.js behaviour. Leave null to keep every crop.
+const CROP_FILTER = null;
+
+// commonCropName -> verified NCBI Taxonomy IRI. Add entries here as needed.
+// Crops not listed here (e.g. FAIDARE's generic "Forest tree" test records,
+// which have no single species) fall back to whatever genus/species the raw
+// germplasm record itself carries, emitted as plain literals instead of a
+// (potentially wrong) taxon IRI — see germplasm loop below.
+const CROP_TAXON = {
+  Wheat: 'obo:NCBITaxon_4565',  // Triticum aestivum
+  Maize: 'obo:NCBITaxon_4577',  // Zea mays
+};
+
+// --- Raw loading helpers (moved over from filter.js) -------------------------
+
+function loadGz(filename) {
+  const buf = fs.readFileSync(path.join(RAW_DIR, filename));
+  return JSON.parse(zlib.gunzipSync(buf).toString('utf8'));
+}
+
+function loadShards(prefix) {
+  const files = fs.readdirSync(RAW_DIR).filter(f => f.startsWith(prefix + '-') && f.endsWith('.json.gz'));
+  if (files.length === 0) console.warn(`  WARNING: no shards found for prefix "${prefix}" in ${RAW_DIR}`);
+  return files.flatMap(loadGz);
 }
 
 // --- Turtle helpers ---------------------------------------------------------
@@ -31,18 +60,14 @@ const COMMA_DECIMAL_RE = /^-?\d+,\d+$/;
 function valueLiteral(v) {
   if (v === null || v === undefined) return null;
   let s = String(v);
-  // Real FAIDARE data mixes number formats: most are plain "44.85", but 18,283 of
-  // 100,043 real observations use European comma-decimal "44,85", checked across the
-  // whole dataset (see convert-to-rdf.js commit notes). Without normalizing, these were
-  // silently emitted as xsd:string, breaking SPARQL AVG()/xsd:decimal() casts on them.
+  // Real FAIDARE data mixes number formats: most are plain "44.85", but some use
+  // European comma-decimal "44,85". Without normalizing, these were silently
+  // emitted as xsd:string, breaking SPARQL AVG()/xsd:decimal() casts on them.
   if (COMMA_DECIMAL_RE.test(s)) s = s.replace(',', '.');
   return NUMERIC_RE.test(s) ? s : str(s);
 }
 // Real-data URIs already come as absolute IRIs (urn:INRAE-URGI/...) straight from FAIDARE.
 function realIri(uri) { return `<${uri}>`; }
-// Synthetic IDs were minted as "phenet-poc:kind/N" strings by generate-synthetic.js;
-// promote them to real IRIs under the project's placeholder id namespace.
-function synthIri(id) { return `<https://w3id.org/phenet-poc/id/synthetic/${id.replace(/^phenet-poc:/, '')}>`; }
 
 const PREFIXES = `@prefix ppeo:     <http://purl.org/ppeo/PPEO.owl#> .
 @prefix phenet:   <https://w3id.org/phenet-poc/ontology#> .
@@ -91,11 +116,12 @@ function writeOntologyFile() {
   rdfs:label "Real FAIDARE INRAE-URGI data" ;
   dct:source <https://forge.inrae.fr/urgi/is/faidare/-/tree/master/data/test/json-bulk/INRAE-URGI> .
 
-phenetid:SyntheticDemoDataset a prov:Entity ;
-  rdfs:label "Synthetic PoC demo data (NOT real measurements)" ;
-  rdfs:comment "See docs/synthetic-data.md for full generation methodology." .
-
 phenet:hasProvenance a rdf:Property ; rdfs:label "has provenance" .
+phenet:commonCropName a rdf:Property ; rdfs:label "common crop name" ;
+  rdfs:comment "FAIDARE's commonCropName field, kept as a plain literal since data/raw spans several crops." .
+phenet:genus a rdf:Property ; rdfs:label "genus" ;
+  rdfs:comment "Fallback for germplasm whose crop has no entry in CROP_TAXON (no verified NCBI taxon IRI)." .
+phenet:species a rdf:Property ; rdfs:label "species" .
 phenet:ofGermplasm a rdf:Property ; rdfs:label "of germplasm" .
 phenet:ofObservationUnit a rdf:Property ; rdfs:label "of observation unit" .
 phenet:observedVariable a rdf:Property ; rdfs:label "observed variable" .
@@ -112,7 +138,7 @@ phenet:GermplasmDescriptor a rdfs:Class ; rdfs:label "Germplasm Descriptor" ;
   console.log('ontology.ttl written');
 }
 
-// --- Emit helpers for observationVariable, shared by real + synthetic -------
+// --- Emit helpers for observationVariable -----------------------------------
 
 function variableTurtle(iri, id, name, description, unit) {
   const lines = [`${iri} a ppeo:observed_variable ;`];
@@ -130,46 +156,123 @@ function variableTurtle(iri, id, name, description, unit) {
   return lines.join('\n') + '\n\n';
 }
 
-// --- Real data ---------------------------------------------------------------
+// --- Real data, loaded directly from data/raw --------------------------------
 
 function writeRealFile() {
   const out = fs.createWriteStream(path.join(OUT_DIR, 'real.ttl'));
   out.write(PREFIXES);
 
-  const germplasm = load(WHEAT_DIR, 'germplasm.json');
-  const germplasmAttribute = load(WHEAT_DIR, 'germplasmAttribute.json');
-  const observation = load(WHEAT_DIR, 'observation.json');
-  const observationUnit = load(WHEAT_DIR, 'observationUnit.json');
-  const observationVariable = load(WHEAT_DIR, 'observationVariable.json');
-  const study = load(WHEAT_DIR, 'study.json');
-  const trial = load(WHEAT_DIR, 'trial.json');
-  const location = load(WHEAT_DIR, 'location.json');
-  const program = load(WHEAT_DIR, 'program.json');
+  console.log('Loading germplasm...');
+  let germplasm = loadGz('germplasm-1.json.gz');
+  if (CROP_FILTER) germplasm = germplasm.filter(g => g.commonCropName === CROP_FILTER);
+  const germplasmIds = new Set(germplasm.map(g => g.germplasmDbId));
+  console.log(`  germplasm: ${germplasm.length}`);
 
-  const NCBI_TAXON = 'obo:NCBITaxon_4565'; // Triticum aestivum, verified, see docs/schema-design.md
+  console.log('Loading germplasmAttribute...');
+  const germplasmAttribute = loadGz('germplasmAttribute-1.json.gz')
+    .filter(a => germplasmIds.has(a.germplasmDbId));
+  console.log(`  germplasmAttribute: ${germplasmAttribute.length}`);
+
+  console.log('Loading observation shards (this is the big one)...');
+  const observation = loadShards('observation').filter(o => germplasmIds.has(o.germplasmDbId));
+  console.log(`  observation: ${observation.length}`);
+
+  const studyIds = new Set(observation.map(o => o.studyDbId));
+  const trialIds = new Set(observation.map(o => o.trialDbId));
+  const locationIds = new Set(observation.map(o => o.studyLocationDbId));
+  const observationUnitIds = new Set(observation.map(o => o.observationUnitDbId));
+
+  console.log('Loading observationUnit shards...');
+  const observationUnit = loadShards('observationUnit')
+    .filter(u => germplasmIds.has(u.germplasmDbId) || observationUnitIds.has(u.observationUnitDbId));
+  console.log(`  observationUnit: ${observationUnit.length}`);
+  const programIds = new Set(observationUnit.map(u => u.programDbId).filter(Boolean));
+
+  console.log('Loading observationVariable...');
+  const usedVariableIds = new Set(observation.map(o => o.observationVariableDbId));
+  const observationVariable = loadGz('observationVariable-1.json.gz')
+    .filter(v => usedVariableIds.has(v.observationVariableDbId));
+  console.log(`  observationVariable: ${observationVariable.length}`);
+
+  // study-1.json.gz does not cover every study referenced by observations (a
+  // referential gap in the source test data — see filter.js history). Studies
+  // are reconstructed from the fields BrAPI already denormalizes onto each
+  // observation (studyName, studyLocationDbId/Name, trialDbId/Name), one row
+  // per unique studyDbId, then any record that *does* exist in the official
+  // study file is merged in on top.
+  console.log('Loading study...');
+  const officialStudyById = new Map(
+    loadGz('study-1.json.gz').filter(s => studyIds.has(s.studyDbId)).map(s => [s.studyDbId, s])
+  );
+  const derivedStudyById = new Map();
+  for (const o of observation) {
+    if (!derivedStudyById.has(o.studyDbId)) {
+      derivedStudyById.set(o.studyDbId, {
+        studyDbId: o.studyDbId,
+        studyName: o.studyName,
+        studyURI: o.studyURI,
+        trialDbId: o.trialDbId,
+        trialURI: o.trialURI,
+        trialName: o.trialName,
+        locationDbId: o.studyLocationDbId,
+        locationURI: o.studyLocationURI,
+        locationName: o.studyLocation,
+        seasons: new Set(),
+        derived: true,
+      });
+    }
+    const s = derivedStudyById.get(o.studyDbId);
+    if (o.season && o.season.seasonName) s.seasons.add(o.season.seasonName);
+  }
+  const study = [...studyIds].map(id => {
+    if (officialStudyById.has(id)) return officialStudyById.get(id);
+    const d = derivedStudyById.get(id);
+    return { ...d, seasons: [...d.seasons] };
+  });
+  console.log(`  study: ${study.length} (${study.filter(s => s.derived).length} derived, ${study.filter(s => !s.derived).length} from official study file)`);
+
+  console.log('Loading trial...');
+  const trial = loadGz('trial-1.json.gz').filter(t => trialIds.has(t.trialDbId));
+  console.log(`  trial: ${trial.length}`);
+
+  console.log('Loading location...');
+  const location = loadGz('location-1.json.gz').filter(l => locationIds.has(l.locationDbId));
+  console.log(`  location: ${location.length}`);
+
+  console.log('Loading program...');
+  const program = loadGz('program-1.json.gz').filter(p => programIds.has(p.programDbId));
+  console.log(`  program: ${program.length}`);
 
   for (const g of germplasm) {
-    out.write(`${realIri(g.germplasmURI)} a ppeo:biological_material ;
-  rdfs:label ${str(g.germplasmName)} ;
-  phenet:accessionNumber ${str(g.accessionNumber)} ;
-  phenet:hasTaxon ${NCBI_TAXON} ;
-  phenet:subtaxon ${str(g.subtaxa || '')} ;
-  phenet:heldBy ${str(g.instituteName || '')} .
-
-`);
+    const lines = [`${realIri(g.germplasmURI)} a ppeo:biological_material ;`];
+    lines.push(`  rdfs:label ${str(g.germplasmName)} ;`);
+    lines.push(`  phenet:accessionNumber ${str(g.accessionNumber)} ;`);
+    lines.push(`  phenet:commonCropName ${str(g.commonCropName || '')} ;`);
+    const taxon = CROP_TAXON[g.commonCropName];
+    if (taxon) {
+      // Known crop: verified NCBI Taxonomy IRI.
+      lines.push(`  phenet:hasTaxon ${taxon} ;`);
+    } else {
+      // Unmapped crop (e.g. "Forest tree"): no single verified taxon IRI, so
+      // fall back to whatever genus/species the raw record itself carries
+      // rather than fabricate a link. Add these to CROP_TAXON above once
+      // you've confirmed the correct NCBI id for the crop.
+      if (g.genus) lines.push(`  phenet:genus ${str(g.genus)} ;`);
+      if (g.species) lines.push(`  phenet:species ${str(g.species)} ;`);
+    }
+    lines.push(`  phenet:subtaxon ${str(g.subtaxa || '')} ;`);
+    lines.push(`  phenet:heldBy ${str(g.instituteName || '')} .`);
+    out.write(lines.join('\n') + '\n\n');
   }
 
   // For the two categorical CQ3 pairs, the real descriptor's free text ("awned (<=
-  // length of spike) | barbu... - 2004") can't be string-compared against the
-  // synthetic observation's simplified class directly, so also store the same
-  // normalized class the generator used to derive its "ground truth", via the
-  // shared scripts/lib/trait-mappings.js (guaranteed identical mapping, no drift).
+  // length of spike) | barbu... - 2004") can't be string-compared against a
+  // simplified class directly, so also store the normalized class via
+  // scripts/lib/trait-mappings.js (guaranteed identical mapping, no drift).
   const NORMALIZERS = {
     CEREALS_WHEAT_AWNEDNESS_SCALE: mapRealAwnValue,
     CEREALS_GRAIN_COLOUR_SCALE: mapRealGrainColourValue,
-    // "88 cm" -> "88" (matches the synthetic PLANT_HEIGHT_CM number for a direct numeric compare)
     CEREALS_PLANT_HEIGHT: v => String(parseFloat(v)),
-    // "intermediate  | moyen - 2004" -> "intermediate" (matches the SPARQL-side bucketing of TKW_g)
     CEREALS_TKW_SCALE: v => v.split('|')[0].trim().toLowerCase(),
   };
 
@@ -189,11 +292,7 @@ function writeRealFile() {
     }
   }
 
-  // Only emit variables actually referenced by a real observation (38 of the 909
-  // in the wheat trait dictionary), see docs/data-assessment.md.
-  const usedVariableIds = new Set(observation.map(o => o.observationVariableDbId));
   for (const v of observationVariable) {
-    if (!usedVariableIds.has(v.observationVariableDbId)) continue;
     const iri = realIri(v.observationVariableURI);
     out.write(variableTurtle(iri, v.observationVariableDbId, v.name, v.trait && v.trait.description, null));
   }
@@ -209,10 +308,6 @@ function writeRealFile() {
 
   for (const o of observation) {
     const val = valueLiteral(o.value);
-    // Observation records only carry observationVariableDbId, not a URI, rebuild the
-    // same percent-encoded IRI form the variable definitions themselves use (verified
-    // against the source JSON's own observationVariableURI field, e.g. "CO_321:1000177"
-    // -> ".../observationVariable/CO_321%3A1000177").
     const variableIri = `<urn:INRAE-URGI/observationVariable/${encodeURIComponent(o.observationVariableDbId)}>`;
     out.write(`${realIri(o.observationURI)} a ppeo:observation ;
   phenet:ofGermplasm ${realIri(o.germplasmURI)} ;
@@ -265,77 +360,5 @@ function writeRealFile() {
   console.log('real.ttl written:', { germplasm: germplasm.length, descriptors: descCounter, observation: observation.length, observationUnit: observationUnit.length, study: study.length });
 }
 
-// --- Synthetic data ------------------------------------------------------------
-
-function writeSyntheticFile() {
-  const out = fs.createWriteStream(path.join(OUT_DIR, 'synthetic.ttl'));
-  out.write(PREFIXES);
-
-  const observation = load(SYNTH_DIR, 'observation.json');
-  const observationUnit = load(SYNTH_DIR, 'observationUnit.json');
-  const observationVariable = load(SYNTH_DIR, 'observationVariable.json');
-  const study = load(SYNTH_DIR, 'study.json');
-  const trial = load(SYNTH_DIR, 'trial.json');
-  const program = load(SYNTH_DIR, 'program.json');
-
-  for (const v of observationVariable) {
-    out.write(variableTurtle(synthIri(`variable/${v.observationVariableDbId.replace(/^PHENETPOC:/, '')}`), v.observationVariableDbId, v.name, v.trait && v.trait.description, v.unit));
-  }
-
-  for (const u of observationUnit) {
-    out.write(`${synthIri(u.observationUnitDbId)} a ppeo:observation_unit ;
-  phenet:ofGermplasm ${realIri(u.germplasmURI)} ;
-  phenet:partOfStudy ${synthIri(u.studyDbId)} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  for (const o of observation) {
-    const val = valueLiteral(o.value);
-    const variableIri = synthIri(`variable/${o.observationVariableDbId.replace(/^PHENETPOC:/, '')}`);
-    out.write(`${synthIri(o.observationDbId)} a ppeo:observation ;
-  phenet:ofGermplasm ${realIri(o.germplasmURI)} ;
-  phenet:ofObservationUnit ${synthIri(o.observationUnitDbId)} ;
-  phenet:observedVariable ${variableIri} ;
-  phenet:value ${val === null ? '""' : val} ;
-  phenet:season ${str(o.season && o.season.seasonName || '')} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  for (const s of study) {
-    out.write(`${synthIri(s.studyDbId)} a ppeo:study ;
-  rdfs:label ${str(s.studyName)} ;
-  phenet:partOfTrial ${synthIri(s.trialDbId)} ;
-  phenet:conductedAt ${realIri(s.locationURI)} ;
-  phenet:season ${str(s.seasons[0])} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  for (const t of trial) {
-    out.write(`${synthIri(t.trialDbId)} a phenet:Trial ;
-  rdfs:label ${str(t.trialName)} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  for (const p of program) {
-    out.write(`${synthIri(p.programDbId)} a phenet:Program ;
-  rdfs:label ${str(p.programName)} ;
-  phenet:hasProvenance phenetid:SyntheticDemoDataset .
-
-`);
-  }
-
-  out.end();
-  console.log('synthetic.ttl written:', { observation: observation.length, observationUnit: observationUnit.length, study: study.length });
-}
-
 writeOntologyFile();
 writeRealFile();
-writeSyntheticFile();
