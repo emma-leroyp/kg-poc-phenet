@@ -17,11 +17,12 @@ phenetid:RealFaidareDataset a prov:Entity ;
   rdfs:label "Real FAIDARE INRAE-URGI data" ;
   dct:source <https://forge.inrae.fr/urgi/is/faidare/-/tree/master/data/test/json-bulk/INRAE-URGI> .
 
-phenetid:SyntheticDemoDataset a prov:Entity ;
-  rdfs:label "Synthetic PoC demo data (NOT real measurements)" ;
-  rdfs:comment "See docs/synthetic-data.md for full generation methodology." .
-
 phenet:hasProvenance a rdf:Property ; rdfs:label "has provenance" .
+phenet:commonCropName a rdf:Property ; rdfs:label "common crop name" ;
+  rdfs:comment "FAIDARE's commonCropName field, kept as a plain literal since data/raw spans several crops." .
+phenet:genus a rdf:Property ; rdfs:label "genus" ;
+  rdfs:comment "Fallback for germplasm whose crop has no entry in CROP_TAXON (no verified NCBI taxon IRI)." .
+phenet:species a rdf:Property ; rdfs:label "species" .
 phenet:ofGermplasm a rdf:Property ; rdfs:label "of germplasm" .
 phenet:ofObservationUnit a rdf:Property ; rdfs:label "of observation unit" .
 phenet:observedVariable a rdf:Property ; rdfs:label "observed variable" .

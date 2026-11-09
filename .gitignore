@@ -6,3 +6,4 @@ node_modules/
 /data/rdf/
 *.log
 .DS_Store
+site/data/real.ttl
